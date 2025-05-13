@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+if [[ $# -eq 1 ]]; then
+    selected=$1
+else
+    selected=$(find ~/projects ~/personal ~/Scripts -mindepth 0 -maxdepth 1 -type d | fzf)
+fi
+
+if [[ -z $selected ]]; then
+    exit 0
+fi
+
+selected_name=$(basename "$selected" | tr . _)
+
+send_cd_to_session() {
+    tmux send-keys -t "$1":0.0 "cd \"$selected\"" C-m
+    tmux send-keys -t "$1":0.0 "clear" C-m
+}
+
+if [[ -z $TMUX ]]; then
+    # Outside tmux
+    if tmux has-session -t=$selected_name 2>/dev/null; then
+        send_cd_to_session "$selected_name"
+        tmux attach-session -t $selected_name
+    else
+        tmux new-session -s "$selected_name" -c "$selected" -n nvim 'nvim -c Neotree'
+        tmux new-window -t "$selected_name" -n shell -c "$selected"
+        tmux select-window -t "$selected_name":0
+        tmux attach-session -t "$selected_name"
+    fi
+else
+    # Inside tmux
+    current_session=$(tmux display-message -p '#S')
+    if [[ "$current_session" == "$selected_name" ]]; then
+        echo "Already in tmux session: $selected_name"
+    else
+        if ! tmux has-session -t=$selected_name 2>/dev/null; then
+            tmux new-session -ds "$selected_name" -c "$selected" -n nvim 'nvim -c Neotree'
+            tmux new-window -t "$selected_name" -n shell -c "$selected"
+        else
+            send_cd_to_session "$selected_name"
+        fi
+        tmux switch-client -t "$selected_name"
+    fi
+fi
+
